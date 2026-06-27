@@ -23,7 +23,7 @@ export const ObjectField: React.FC<ObjectFieldProps> = ({
   const requiredFields = schema.required || [];
 
   return (
-    <div className="object-field" style={{ animationDelay: `${depth * 30}ms` }}>
+    <div className="object-field">
       {depth > 0 && (
         <div className="object-field-header">
           <div className="object-field-icon">{ }</div>

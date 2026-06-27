@@ -42,7 +42,7 @@ export const ArrayField: React.FC<ArrayFieldProps> = ({
   };
 
   return (
-    <div className="array-field" style={{ animationDelay: `${depth * 30}ms` }}>
+    <div className="array-field">
       <div className="array-field-header">
         <div className="array-field-title-row">
           <div className="array-field-icon">[ ]</div>
@@ -67,7 +67,7 @@ export const ArrayField: React.FC<ArrayFieldProps> = ({
                   onClick={() => handleRemove(index)}
                   title="Remove item"
                 >
-                  ✕
+                  Remove
                 </Button>
               )}
             </div>
@@ -87,7 +87,7 @@ export const ArrayField: React.FC<ArrayFieldProps> = ({
 
       {canAdd && (
         <Button variant="secondary" size="sm" onClick={handleAdd}>
-          + Add Item
+          Add item
         </Button>
       )}
     </div>

@@ -1,0 +1,2101 @@
+You are an expert AI developer. Your task is to recreate a complete React + Vite + TypeScript application called "Schema Form Generator".
+
+### About the Project
+This application dynamically generates interactive forms based on JSON Schema definitions. The user pastes a JSON Schema into an editor, and the app recursively parses it to render the correct form fields (strings, numbers, booleans, nested objects, and dynamic arrays). When the form is submitted, it outputs the collected data as a formatted JSON object. 
+
+The application uses a professional dark mode ("night mode") UI built with raw CSS, and it maintains its own state using immutable deep-set utilities rather than relying on external form libraries.
+
+### What You Need to Know to Create It
+- It's a standard Vite React-TS project. No extra dependencies are needed besides the default ones provided by create-vite.
+- The core logic lies in FormRenderer.tsx, which acts as a recursive dispatch engine depending on schema.type and schema.enum.
+- State management uses a single top-level object in App.tsx and path-based updates (e.g., ["personalInfo", "firstName"]).
+- The styling is defined entirely in index.css using CSS variables for a clean, Linear-inspired dark mode.
+
+### How to Parse This Document
+Below this introduction, you will find the source code for all the necessary files in the project.
+Each file is separated by a delimiter in the following format:
+============= FILE: path/to/file =============
+[File Content]
+
+Read each file block and create the corresponding file at the specified path relative to the root of the Vite project.
+
+Here are the files:
+
+============= FILE: index.html =============
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Dynamic form generator from JSON Schema. Paste a schema, get an interactive form, export JSON." />
+    <title>Schema Form Generator — Dynamic Forms from JSON Schema</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+
+============= FILE: package.json =============
+{
+  "name": "schema-form-generator",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12"
+  }
+}
+
+
+============= FILE: tsconfig.json =============
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+
+
+============= FILE: vite.config.ts =============
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+})
+
+
+============= FILE: src/main.tsx =============
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import App from "./App";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+
+
+============= FILE: src/App.tsx =============
+import { useState, useCallback } from "react";
+import type { JsonSchema, FormValue, Path } from "./types/schema";
+import { deepSet } from "./utils/deepSet";
+import { generateDefault } from "./utils/defaultValue";
+import { SchemaEditor } from "./components/SchemaEditor";
+import { FormRenderer } from "./components/FormRenderer";
+import { JsonOutput } from "./components/JsonOutput";
+import { Button } from "./components/ui/Button";
+
+function App() {
+  const [schema, setSchema] = useState<JsonSchema | null>(null);
+  const [formData, setFormData] = useState<FormValue>({});
+  const [submittedData, setSubmittedData] = useState<FormValue | null>(null);
+  const [formKey, setFormKey] = useState(0);
+
+  const handleSchemaChange = useCallback((newSchema: JsonSchema) => {
+    setSchema(newSchema);
+    const defaults = generateDefault(newSchema);
+    setFormData(defaults);
+    setSubmittedData(null);
+    setFormKey((k) => k + 1);
+  }, []);
+
+  const handleFieldChange = useCallback((path: Path, value: FormValue) => {
+    setFormData((prev) => deepSet(prev, path, value));
+  }, []);
+
+  const handleSubmit = () => {
+    setSubmittedData(formData);
+  };
+
+  const handleReset = () => {
+    if (schema) {
+      const defaults = generateDefault(schema);
+      setFormData(defaults);
+      setSubmittedData(null);
+      setFormKey((k) => k + 1);
+    }
+  };
+
+  return (
+    <div className="app">
+      {/* Header */}
+      <header className="app-header">
+        <div className="app-header-content">
+          <div className="app-logo">
+            <div className="app-logo-mark">SF</div>
+            <h1 className="app-title">Schema Form</h1>
+          </div>
+          <p className="app-tagline">
+            Dynamic form generation from JSON Schema
+          </p>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="app-main">
+        {/* Left panel: Schema Editor */}
+        <section className="panel panel-schema">
+          <SchemaEditor onSchemaChange={handleSchemaChange} />
+        </section>
+
+        {/* Center panel: Dynamic Form */}
+        <section className="panel panel-form">
+          <div className="panel-header">
+            <div className="panel-header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" />
+              </svg>
+            </div>
+            <h2 className="panel-title">Form</h2>
+          </div>
+          <p className="panel-subtitle">
+            Fields are generated from your schema definition.
+          </p>
+
+          {schema ? (
+            <div className="form-container" key={formKey}>
+              <div className="form-fields">
+                <FormRenderer
+                  schema={schema}
+                  value={formData}
+                  onChange={handleFieldChange}
+                  path={[]}
+                  fieldName="Root"
+                  depth={0}
+                />
+              </div>
+
+              <div className="form-actions">
+                <Button onClick={handleSubmit} variant="primary" size="lg">
+                  Send
+                </Button>
+                <Button onClick={handleReset} variant="ghost" size="md">
+                  Reset
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="form-empty">
+              <div className="form-empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zm4.03 6.28a.75.75 0 00-1.06-1.06L4.97 9.47a.75.75 0 000 1.06l2.25 2.25a.75.75 0 001.06-1.06L6.56 10l1.72-1.72zm4.5-1.06a.75.75 0 10-1.06 1.06L13.44 10l-1.72 1.72a.75.75 0 101.06 1.06l2.25-2.25a.75.75 0 000-1.06l-2.25-2.25z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <p className="form-empty-text">
+                Load a schema from the left panel to generate your form.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Right panel: JSON Output */}
+        <section className="panel panel-output">
+          <JsonOutput data={submittedData} />
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+
+============= FILE: src/index.css =============
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* ============================================
+   Design Tokens
+   ============================================ */
+:root {
+  --bg-body: #0e1117;
+  --bg-surface: #161b22;
+  --bg-surface-raised: #21262d;
+  --bg-inset: #010409;
+  --bg-input: #0d1117;
+  --bg-input-hover: #161b22;
+  --bg-sidebar: #010409;
+  --bg-code: #010409;
+
+  --border-default: #30363d;
+  --border-strong: #484f58;
+  --border-focus: #3b82f6;
+
+  --text-primary: #e6edf3;
+  --text-secondary: #848d97;
+  --text-tertiary: #6e7681;
+  --text-on-dark: #e6edf3;
+  --text-on-dark-muted: #848d97;
+
+  --blue-50: rgba(59, 130, 246, 0.1);
+  --blue-100: rgba(59, 130, 246, 0.2);
+  --blue-200: #bfdbfe;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #1e3a5f;
+
+  --red-50: rgba(239, 68, 68, 0.1);
+  --red-500: #ef4444;
+  --red-600: #dc2626;
+
+  --green-50: rgba(22, 163, 74, 0.1);
+  --green-600: #16a34a;
+  --green-700: #15803d;
+
+  --amber-50: rgba(217, 119, 6, 0.1);
+  --amber-600: #d97706;
+
+  --cyan-600: #0891b2;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.06), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.18);
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+}
+
+/* ============================================
+   Reset & Base
+   ============================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-body);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ============================================
+   App Layout
+   ============================================ */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.app-header {
+  background: var(--bg-sidebar);
+  padding: 0 var(--space-8);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.app-header-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.app-logo-mark {
+  width: 28px;
+  height: 28px;
+  background: var(--blue-600);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: -0.02em;
+}
+
+.app-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-on-dark);
+  letter-spacing: -0.01em;
+}
+
+.app-tagline {
+  color: var(--text-on-dark-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+/* Main grid */
+.app-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 340px 1fr 380px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  min-height: 0;
+}
+
+@media (max-width: 1200px) {
+  .app-main {
+    grid-template-columns: 1fr 1fr;
+  }
+  .panel-output {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Panel
+   ============================================ */
+.panel {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel-schema {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
+}
+
+.panel-form {
+  background: var(--bg-body);
+  padding: var(--space-8) var(--space-10);
+}
+
+.panel-output {
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-default);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.panel-header-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--blue-600);
+  flex-shrink: 0;
+}
+
+.panel-header-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.panel-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.panel-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-4);
+  line-height: 1.5;
+}
+
+/* ============================================
+   Schema Editor
+   ============================================ */
+.schema-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.schema-editor-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.schema-textarea {
+  flex: 1;
+  min-height: 260px;
+  background: var(--bg-code);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.schema-textarea:focus {
+  border-color: var(--blue-500);
+  box-shadow: var(--shadow-focus);
+}
+
+.schema-textarea-error {
+  border-color: var(--red-500) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+}
+
+.schema-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--red-50);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--red-600);
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+}
+
+.schema-error-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--blue-500);
+  outline-offset: 2px;
+}
+
+/* Sizes */
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  height: 28px;
+}
+
+.btn-md {
+  padding: 7px 16px;
+  font-size: 0.82rem;
+  height: 34px;
+}
+
+.btn-lg {
+  padding: 9px 24px;
+  font-size: 0.88rem;
+  height: 40px;
+}
+
+/* Variants */
+.btn-primary {
+  background: var(--blue-600);
+  color: white;
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.btn-primary:hover {
+  background: var(--blue-700);
+}
+
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-inset);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+}
+
+.btn-danger:hover {
+  background: var(--red-50);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--red-600);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-inset);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Form Container
+   ============================================ */
+.form-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.form-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-default);
+}
+
+.form-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-12);
+  text-align: center;
+}
+
+.form-empty-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 1.2rem;
+}
+
+.form-empty-text {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+/* ============================================
+   Field Wrapper
+   ============================================ */
+.field-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.field-label-text {
+  text-transform: capitalize;
+}
+
+.field-required {
+  color: var(--red-500);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.field-description {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-1);
+  line-height: 1.4;
+}
+
+/* ============================================
+   Input Fields
+   ============================================ */
+.field-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  outline: none;
+  height: 34px;
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.field-input:hover {
+  border-color: var(--border-strong);
+}
+
+.field-input:focus {
+  border-color: var(--blue-500);
+  box-shadow: var(--shadow-focus);
+}
+
+.field-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Select */
+.field-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
+.field-select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* Color input */
+.color-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.field-input-color {
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.color-preview-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   Toggle Switch
+   ============================================ */
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.toggle-switch:focus-visible .toggle-track {
+  box-shadow: var(--shadow-focus);
+}
+
+.toggle-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: #30363d;
+  transition: background var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.toggle-on .toggle-track {
+  background: var(--blue-600);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e6edf3;
+  transition: transform var(--transition-normal);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.toggle-on .toggle-thumb {
+  transform: translateX(16px);
+}
+
+.toggle-label {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  transition: color var(--transition-normal);
+}
+
+.toggle-on .toggle-label {
+  color: var(--blue-600);
+}
+
+/* ============================================
+   Object Field
+   ============================================ */
+.object-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.object-field-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.object-field-icon {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--blue-600);
+  background: var(--blue-50);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.object-field-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.object-field-description {
+  font-size: 0.73rem;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.object-field-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  border-left: 2px solid var(--blue-500);
+}
+
+/* ============================================
+   Array Field
+   ============================================ */
+.array-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.array-field-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.array-field-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.array-field-icon {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--cyan-600);
+  background: rgba(8, 145, 178, 0.1);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.array-field-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.array-field-count {
+  font-size: 0.73rem;
+  color: var(--text-tertiary);
+  background: var(--bg-inset);
+  padding: 1px 8px;
+  border-radius: 100px;
+  margin-left: auto;
+  border: 1px solid var(--border-default);
+}
+
+.array-field-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.array-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: box-shadow var(--transition-normal);
+}
+
+.array-item:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.array-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.array-item-index {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.array-item-body {
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ============================================
+   JSON Output
+   ============================================ */
+.json-output {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.json-output-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.json-output-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.json-output-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--green-700);
+  background: var(--green-50);
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(22, 163, 74, 0.15);
+}
+
+.json-copy-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.73rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.json-copy-btn:hover {
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.json-output-code {
+  flex: 1;
+  background: var(--bg-code);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  overflow: auto;
+  max-height: 500px;
+}
+
+.json-output-code code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #93c5fd;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.json-output-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-12);
+}
+
+.json-output-empty-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.json-output-empty p {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  max-width: 220px;
+  line-height: 1.5;
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 var(--space-4);
+  }
+
+  .app-header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: var(--space-3) 0;
+  }
+
+  .app-header {
+    height: auto;
+  }
+
+  .panel {
+    padding: var(--space-4);
+  }
+
+  .panel-form {
+    padding: var(--space-4);
+  }
+
+  .panel-schema,
+  .panel-output {
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .schema-textarea {
+    min-height: 180px;
+  }
+}
+
+
+============= FILE: src/types/schema.ts =============
+export type SchemaType =
+  | "string"
+  | "number"
+  | "integer"
+  | "boolean"
+  | "object"
+  | "array"
+  | "null";
+
+export type StringFormat =
+  | "date"
+  | "date-time"
+  | "email"
+  | "uri"
+  | "color";
+
+export interface JsonSchema {
+  type?: SchemaType;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  required?: string[];
+  enum?: (string | number | boolean | null)[];
+  title?: string;
+  description?: string;
+  default?: unknown;
+  format?: StringFormat;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+}
+
+export type FormValue =
+  | string
+  | number
+  | boolean
+  | null
+  | FormValue[]
+  | { [key: string]: FormValue };
+
+export type PathSegment = string | number;
+export type Path = PathSegment[];
+
+
+============= FILE: src/utils/deepSet.ts =============
+import type { FormValue, Path } from "../types/schema";
+
+export function deepSet(
+  obj: FormValue,
+  path: Path,
+  value: FormValue
+): FormValue {
+  if (path.length === 0) return value;
+
+  const [head, ...rest] = path;
+
+  if (typeof head === "number") {
+    const arr = Array.isArray(obj) ? [...obj] : [];
+    arr[head] = deepSet(arr[head] ?? null, rest, value);
+    return arr;
+  }
+
+  const current =
+    obj !== null && typeof obj === "object" && !Array.isArray(obj)
+      ? { ...(obj as Record<string, FormValue>) }
+      : ({} as Record<string, FormValue>);
+
+  current[head] = deepSet(current[head] ?? null, rest, value);
+  return current;
+}
+
+export function deepGet(obj: FormValue, path: Path): FormValue | undefined {
+  let current: FormValue | undefined = obj;
+  for (const segment of path) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof segment === "number" && Array.isArray(current)) {
+      current = current[segment];
+    } else if (
+      typeof segment === "string" &&
+      typeof current === "object" &&
+      !Array.isArray(current)
+    ) {
+      current = (current as Record<string, FormValue>)[segment];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+
+============= FILE: src/utils/defaultValue.ts =============
+import type { FormValue, JsonSchema } from "../types/schema";
+
+export function generateDefault(schema: JsonSchema): FormValue {
+  if (schema.default !== undefined) {
+    return schema.default as FormValue;
+  }
+
+  if (schema.enum && schema.enum.length > 0) {
+    return schema.enum[0] as FormValue;
+  }
+
+  switch (schema.type) {
+    case "string":
+      return schema.format === "color" ? "#6366f1" : "";
+
+    case "number":
+    case "integer":
+      return schema.minimum ?? 0;
+
+    case "boolean":
+      return false;
+
+    case "object": {
+      const obj: Record<string, FormValue> = {};
+      if (schema.properties) {
+        for (const [key, propSchema] of Object.entries(schema.properties)) {
+          obj[key] = generateDefault(propSchema);
+        }
+      }
+      return obj;
+    }
+
+    case "array": {
+      const minItems = schema.minItems ?? 0;
+      if (minItems > 0 && schema.items) {
+        return Array.from({ length: minItems }, () =>
+          generateDefault(schema.items!)
+        );
+      }
+      return [];
+    }
+
+    case "null":
+      return null;
+
+    default:
+      return "";
+  }
+}
+
+
+============= FILE: src/components/SchemaEditor.tsx =============
+import React, { useState } from "react";
+import { Button } from "./ui/Button";
+
+const EXAMPLE_SCHEMA = JSON.stringify(
+  {
+    type: "object",
+    properties: {
+      personalInfo: {
+        type: "object",
+        title: "Personal Information",
+        description: "Basic personal details",
+        properties: {
+          firstName: { type: "string", title: "First Name" },
+          lastName: { type: "string", title: "Last Name" },
+          email: {
+            type: "string",
+            title: "Email",
+            format: "email",
+          },
+          age: {
+            type: "integer",
+            title: "Age",
+            minimum: 0,
+            maximum: 150,
+          },
+          isActive: { type: "boolean", title: "Active Member" },
+        },
+        required: ["firstName", "lastName", "email"],
+      },
+      role: {
+        type: "string",
+        title: "Role",
+        enum: ["Admin", "Editor", "Viewer"],
+      },
+      skills: {
+        type: "array",
+        title: "Skills",
+        description: "List of skills",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", title: "Skill Name" },
+            level: {
+              type: "number",
+              title: "Proficiency (1-10)",
+              minimum: 1,
+              maximum: 10,
+            },
+          },
+          required: ["name", "level"],
+        },
+      },
+      startDate: {
+        type: "string",
+        title: "Start Date",
+        format: "date",
+      },
+      favoriteColor: {
+        type: "string",
+        title: "Favorite Color",
+        format: "color",
+      },
+    },
+    required: ["personalInfo", "role"],
+  },
+  null,
+  2
+);
+
+interface SchemaEditorProps {
+  onSchemaChange: (schema: object) => void;
+}
+
+export const SchemaEditor: React.FC<SchemaEditorProps> = ({
+  onSchemaChange,
+}) => {
+  const [schemaText, setSchemaText] = useState(EXAMPLE_SCHEMA);
+  const [error, setError] = useState<string | null>(null);
+  const [isValid, setIsValid] = useState(true);
+
+  const handleLoad = () => {
+    try {
+      const parsed = JSON.parse(schemaText);
+      setError(null);
+      setIsValid(true);
+      onSchemaChange(parsed);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Invalid JSON";
+      setError(msg);
+      setIsValid(false);
+    }
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setSchemaText(e.target.value);
+    if (error) {
+      try {
+        JSON.parse(e.target.value);
+        setError(null);
+        setIsValid(true);
+      } catch {
+        // still invalid, keep error
+      }
+    }
+  };
+
+  return (
+    <div className="schema-editor">
+      <div className="panel-header">
+        <div className="panel-header-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zm4.03 6.28a.75.75 0 00-1.06-1.06L4.97 9.47a.75.75 0 000 1.06l2.25 2.25a.75.75 0 001.06-1.06L6.56 10l1.72-1.72zm4.5-1.06a.75.75 0 10-1.06 1.06L13.44 10l-1.72 1.72a.75.75 0 101.06 1.06l2.25-2.25a.75.75 0 000-1.06l-2.25-2.25z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <h2 className="panel-title">Schema</h2>
+      </div>
+      <p className="panel-subtitle">
+        Define your JSON Schema, then load it to generate the form.
+      </p>
+      <div className="schema-editor-content">
+        <textarea
+          className={`schema-textarea ${!isValid ? "schema-textarea-error" : ""}`}
+          value={schemaText}
+          onChange={handleTextChange}
+          spellCheck={false}
+        />
+        {error && (
+          <div className="schema-error">
+            <span className="schema-error-icon">!</span>
+            {error}
+          </div>
+        )}
+        <Button onClick={handleLoad} variant="primary" size="md">
+          Load Schema
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+
+============= FILE: src/components/FormRenderer.tsx =============
+import React from "react";
+import type { JsonSchema, FormValue, Path } from "../types/schema";
+import { StringField } from "./fields/StringField";
+import { NumberField } from "./fields/NumberField";
+import { BooleanField } from "./fields/BooleanField";
+import { EnumField } from "./fields/EnumField";
+import { ObjectField } from "./fields/ObjectField";
+import { ArrayField } from "./fields/ArrayField";
+
+interface FormRendererProps {
+  schema: JsonSchema;
+  value: FormValue | undefined;
+  onChange: (path: Path, value: FormValue) => void;
+  path: Path;
+  fieldName: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const FormRenderer: React.FC<FormRendererProps> = ({
+  schema,
+  value,
+  onChange,
+  path,
+  fieldName,
+  required,
+  depth = 0,
+}) => {
+  const label = schema.title || fieldName;
+
+  // Handle enum on any type
+  if (schema.enum && schema.enum.length > 0) {
+    return (
+      <EnumField
+        schema={schema}
+        value={(value as string | number | boolean | null) ?? schema.enum[0] ?? ""}
+        onChange={(v) => onChange(path, v as FormValue)}
+        label={label}
+        required={required}
+        depth={depth}
+      />
+    );
+  }
+
+  switch (schema.type) {
+    case "string":
+      return (
+        <StringField
+          schema={schema}
+          value={(value as string) ?? ""}
+          onChange={(v) => onChange(path, v)}
+          label={label}
+          required={required}
+          depth={depth}
+        />
+      );
+
+    case "number":
+    case "integer":
+      return (
+        <NumberField
+          schema={schema}
+          value={(value as number) ?? 0}
+          onChange={(v) => onChange(path, v)}
+          label={label}
+          required={required}
+          depth={depth}
+        />
+      );
+
+    case "boolean":
+      return (
+        <BooleanField
+          schema={schema}
+          value={(value as boolean) ?? false}
+          onChange={(v) => onChange(path, v)}
+          label={label}
+          required={required}
+          depth={depth}
+        />
+      );
+
+    case "object":
+      return (
+        <ObjectField
+          schema={schema}
+          value={
+            (value as Record<string, FormValue>) ??
+            ({} as Record<string, FormValue>)
+          }
+          onChange={onChange}
+          path={path}
+          label={label}
+          depth={depth}
+        />
+      );
+
+    case "array":
+      return (
+        <ArrayField
+          schema={schema}
+          value={(value as FormValue[]) ?? []}
+          onChange={onChange}
+          path={path}
+          label={label}
+          required={required}
+          depth={depth}
+        />
+      );
+
+    case "null":
+      return null;
+
+    default:
+      return (
+        <div className="field-wrapper field-unknown">
+          <span className="field-label">
+            {label}: <em>Unknown type "{schema.type}"</em>
+          </span>
+        </div>
+      );
+  }
+};
+
+
+============= FILE: src/components/JsonOutput.tsx =============
+import React, { useState } from "react";
+import type { FormValue } from "../types/schema";
+
+interface JsonOutputProps {
+  data: FormValue | null;
+}
+
+export const JsonOutput: React.FC<JsonOutputProps> = ({ data }) => {
+  const [copied, setCopied] = useState(false);
+
+  const jsonString = data !== null ? JSON.stringify(data, null, 2) : null;
+
+  const handleCopy = async () => {
+    if (!jsonString) return;
+    try {
+      await navigator.clipboard.writeText(jsonString);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = jsonString;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="json-output">
+      <div className="panel-header">
+        <div className="panel-header-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M15.988 3.012A2.25 2.25 0 0018 5.25v6.5A2.25 2.25 0 0015.75 14H13.5v-3.379a3 3 0 00-.879-2.121l-3.12-3.121a3 3 0 00-1.402-.791 2.252 2.252 0 011.913-1.576A2.25 2.25 0 0112.25 1h1.5a2.25 2.25 0 012.238 2.012zM11.5 3.75a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v.25h3v-.25z" clipRule="evenodd" />
+            <path d="M3.5 9.75a.75.75 0 01.75-.75h2.873l3 3H4.25a.75.75 0 01-.75-.75v-1.5zM3.5 14.25a.75.75 0 01.75-.75h6.623l1.5 1.5H4.25a.75.75 0 01-.75-.75v-1.5z" />
+          </svg>
+        </div>
+        <h2 className="panel-title">Output</h2>
+      </div>
+      <p className="panel-subtitle">
+        The generated JSON result will appear here after submission.
+      </p>
+
+      {jsonString ? (
+        <div className="json-output-content">
+          <div className="json-output-toolbar">
+            <span className="json-output-badge">JSON</span>
+            <button
+              className="json-copy-btn"
+              onClick={handleCopy}
+              title="Copy to clipboard"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <pre className="json-output-code">
+            <code>{jsonString}</code>
+          </pre>
+        </div>
+      ) : (
+        <div className="json-output-empty">
+          <div className="json-output-empty-icon">{ }</div>
+          <p>Submit the form to view the JSON output.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+============= FILE: src/components/ui/Button.tsx =============
+import React from "react";
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "danger" | "ghost";
+  size?: "sm" | "md" | "lg";
+}
+
+export const Button: React.FC<ButtonProps> = ({
+  variant = "primary",
+  size = "md",
+  className = "",
+  children,
+  ...props
+}) => {
+  return (
+    <button
+      className={`btn btn-${variant} btn-${size} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+};
+
+
+============= FILE: src/components/ui/FieldWrapper.tsx =============
+import React from "react";
+
+interface FieldWrapperProps {
+  label: string;
+  description?: string;
+  required?: boolean;
+  depth?: number;
+  children: React.ReactNode;
+}
+
+export const FieldWrapper: React.FC<FieldWrapperProps> = ({
+  label,
+  description,
+  required,
+  depth = 0,
+  children,
+}) => {
+  return (
+    <div className="field-wrapper">
+      <label className="field-label">
+        <span className="field-label-text">{label}</span>
+        {required && <span className="field-required">*</span>}
+      </label>
+      {description && <p className="field-description">{description}</p>}
+      {children}
+    </div>
+  );
+};
+
+
+============= FILE: src/components/fields/StringField.tsx =============
+import React from "react";
+import type { JsonSchema } from "../../types/schema";
+import { FieldWrapper } from "../ui/FieldWrapper";
+
+interface StringFieldProps {
+  schema: JsonSchema;
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const StringField: React.FC<StringFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  label,
+  required,
+  depth,
+}) => {
+  const getInputType = (): string => {
+    switch (schema.format) {
+      case "date":
+        return "date";
+      case "date-time":
+        return "datetime-local";
+      case "email":
+        return "email";
+      case "uri":
+        return "url";
+      case "color":
+        return "color";
+      default:
+        return "text";
+    }
+  };
+
+  const inputType = getInputType();
+  const isColor = schema.format === "color";
+
+  return (
+    <FieldWrapper
+      label={label}
+      description={schema.description}
+      required={required}
+      depth={depth}
+    >
+      <div className={isColor ? "color-input-wrapper" : ""}>
+        <input
+          type={inputType}
+          className={`field-input ${isColor ? "field-input-color" : ""}`}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={schema.title || label}
+          minLength={schema.minLength}
+          maxLength={schema.maxLength}
+          required={required}
+        />
+        {isColor && (
+          <span className="color-preview-label">{value || "#000000"}</span>
+        )}
+      </div>
+    </FieldWrapper>
+  );
+};
+
+
+============= FILE: src/components/fields/NumberField.tsx =============
+import React from "react";
+import type { JsonSchema } from "../../types/schema";
+import { FieldWrapper } from "../ui/FieldWrapper";
+
+interface NumberFieldProps {
+  schema: JsonSchema;
+  value: number;
+  onChange: (value: number) => void;
+  label: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const NumberField: React.FC<NumberFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  label,
+  required,
+  depth,
+}) => {
+  const isInteger = schema.type === "integer";
+
+  return (
+    <FieldWrapper
+      label={label}
+      description={schema.description}
+      required={required}
+      depth={depth}
+    >
+      <input
+        type="number"
+        className="field-input"
+        value={value ?? 0}
+        onChange={(e) => {
+          const val = isInteger
+            ? parseInt(e.target.value, 10)
+            : parseFloat(e.target.value);
+          onChange(isNaN(val) ? 0 : val);
+        }}
+        step={isInteger ? 1 : "any"}
+        min={schema.minimum}
+        max={schema.maximum}
+        placeholder={schema.title || label}
+        required={required}
+      />
+    </FieldWrapper>
+  );
+};
+
+
+============= FILE: src/components/fields/BooleanField.tsx =============
+import React from "react";
+import type { JsonSchema } from "../../types/schema";
+import { FieldWrapper } from "../ui/FieldWrapper";
+
+interface BooleanFieldProps {
+  schema: JsonSchema;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const BooleanField: React.FC<BooleanFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  label,
+  required,
+  depth,
+}) => {
+  return (
+    <FieldWrapper
+      label={label}
+      description={schema.description}
+      required={required}
+      depth={depth}
+    >
+      <div
+        className={`toggle-switch ${value ? "toggle-on" : "toggle-off"}`}
+        onClick={() => onChange(!value)}
+        role="switch"
+        aria-checked={value}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            onChange(!value);
+          }
+        }}
+      >
+        <div className="toggle-track">
+          <div className="toggle-thumb" />
+        </div>
+        <span className="toggle-label">{value ? "True" : "False"}</span>
+      </div>
+    </FieldWrapper>
+  );
+};
+
+
+============= FILE: src/components/fields/EnumField.tsx =============
+import React from "react";
+import type { JsonSchema } from "../../types/schema";
+import { FieldWrapper } from "../ui/FieldWrapper";
+
+interface EnumFieldProps {
+  schema: JsonSchema;
+  value: string | number | boolean | null;
+  onChange: (value: string | number | boolean | null) => void;
+  label: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const EnumField: React.FC<EnumFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  label,
+  required,
+  depth,
+}) => {
+  const enumValues = schema.enum || [];
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const raw = e.target.value;
+    // try to parse back to original type
+    if (raw === "null") {
+      onChange(null);
+    } else if (raw === "true") {
+      onChange(true);
+    } else if (raw === "false") {
+      onChange(false);
+    } else if (!isNaN(Number(raw)) && raw !== "") {
+      onChange(Number(raw));
+    } else {
+      onChange(raw);
+    }
+  };
+
+  return (
+    <FieldWrapper
+      label={label}
+      description={schema.description}
+      required={required}
+      depth={depth}
+    >
+      <select
+        className="field-input field-select"
+        value={String(value ?? "")}
+        onChange={handleChange}
+        required={required}
+      >
+        <option value="" disabled>
+          Select an option...
+        </option>
+        {enumValues.map((opt, i) => (
+          <option key={i} value={String(opt)}>
+            {String(opt)}
+          </option>
+        ))}
+      </select>
+    </FieldWrapper>
+  );
+};
+
+
+============= FILE: src/components/fields/ObjectField.tsx =============
+import React from "react";
+import type { JsonSchema, FormValue, Path } from "../../types/schema";
+import { FormRenderer } from "../FormRenderer";
+
+interface ObjectFieldProps {
+  schema: JsonSchema;
+  value: Record<string, FormValue>;
+  onChange: (path: Path, value: FormValue) => void;
+  path: Path;
+  label: string;
+  depth?: number;
+}
+
+export const ObjectField: React.FC<ObjectFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  path,
+  label,
+  depth = 0,
+}) => {
+  const properties = schema.properties || {};
+  const requiredFields = schema.required || [];
+
+  return (
+    <div className="object-field">
+      {depth > 0 && (
+        <div className="object-field-header">
+          <div className="object-field-icon">{ }</div>
+          <span className="object-field-title">{label}</span>
+          {schema.description && (
+            <span className="object-field-description">
+              {schema.description}
+            </span>
+          )}
+        </div>
+      )}
+      <div className={depth > 0 ? "object-field-body" : ""}>
+        {Object.entries(properties).map(([key, propSchema]) => (
+          <FormRenderer
+            key={key}
+            schema={propSchema}
+            value={
+              value && typeof value === "object" && !Array.isArray(value)
+                ? (value as Record<string, FormValue>)[key]
+                : undefined
+            }
+            onChange={onChange}
+            path={[...path, key]}
+            fieldName={propSchema.title || key}
+            required={requiredFields.includes(key)}
+            depth={depth + 1}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+============= FILE: src/components/fields/ArrayField.tsx =============
+import React from "react";
+import type { JsonSchema, FormValue, Path } from "../../types/schema";
+import { FormRenderer } from "../FormRenderer";
+import { generateDefault } from "../../utils/defaultValue";
+import { Button } from "../ui/Button";
+
+interface ArrayFieldProps {
+  schema: JsonSchema;
+  value: FormValue[];
+  onChange: (path: Path, value: FormValue) => void;
+  path: Path;
+  label: string;
+  required?: boolean;
+  depth?: number;
+}
+
+export const ArrayField: React.FC<ArrayFieldProps> = ({
+  schema,
+  value,
+  onChange,
+  path,
+  label,
+  required,
+  depth = 0,
+}) => {
+  const items = Array.isArray(value) ? value : [];
+  const itemSchema = schema.items || { type: "string" as const };
+  const canAdd = schema.maxItems === undefined || items.length < schema.maxItems;
+  const canRemove =
+    schema.minItems === undefined || items.length > schema.minItems;
+
+  const handleAdd = () => {
+    if (!canAdd) return;
+    const newItem = generateDefault(itemSchema);
+    onChange(path, [...items, newItem]);
+  };
+
+  const handleRemove = (index: number) => {
+    if (!canRemove) return;
+    const newItems = items.filter((_, i) => i !== index);
+    onChange(path, newItems);
+  };
+
+  return (
+    <div className="array-field">
+      <div className="array-field-header">
+        <div className="array-field-title-row">
+          <div className="array-field-icon">[ ]</div>
+          <span className="array-field-title">{label}</span>
+          {required && <span className="field-required">*</span>}
+          <span className="array-field-count">{items.length} items</span>
+        </div>
+        {schema.description && (
+          <p className="field-description">{schema.description}</p>
+        )}
+      </div>
+
+      <div className="array-field-items">
+        {items.map((item, index) => (
+          <div key={index} className="array-item">
+            <div className="array-item-header">
+              <span className="array-item-index">#{index + 1}</span>
+              {canRemove && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => handleRemove(index)}
+                  title="Remove item"
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+            <div className="array-item-body">
+              <FormRenderer
+                schema={itemSchema}
+                value={item}
+                onChange={onChange}
+                path={[...path, index]}
+                fieldName={`Item ${index + 1}`}
+                depth={depth + 1}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {canAdd && (
+        <Button variant="secondary" size="sm" onClick={handleAdd}>
+          Add item
+        </Button>
+      )}
+    </div>
+  );
+};
+
+

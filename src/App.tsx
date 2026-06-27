@@ -40,20 +40,15 @@ function App() {
 
   return (
     <div className="app">
-      {/* Background decorations */}
-      <div className="bg-glow bg-glow-1" />
-      <div className="bg-glow bg-glow-2" />
-      <div className="bg-glow bg-glow-3" />
-
       {/* Header */}
       <header className="app-header">
         <div className="app-header-content">
           <div className="app-logo">
-            <span className="app-logo-icon">⚡</span>
-            <h1 className="app-title">Schema Form Generator</h1>
+            <div className="app-logo-mark">SF</div>
+            <h1 className="app-title">Schema Form</h1>
           </div>
           <p className="app-tagline">
-            Paste a JSON Schema → Get a dynamic form → Export JSON
+            Dynamic form generation from JSON Schema
           </p>
         </div>
       </header>
@@ -68,9 +63,16 @@ function App() {
         {/* Center panel: Dynamic Form */}
         <section className="panel panel-form">
           <div className="panel-header">
-            <div className="panel-header-icon">📝</div>
-            <h2 className="panel-title">Dynamic Form</h2>
+            <div className="panel-header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" />
+              </svg>
+            </div>
+            <h2 className="panel-title">Form</h2>
           </div>
+          <p className="panel-subtitle">
+            Fields are generated from your schema definition.
+          </p>
 
           {schema ? (
             <div className="form-container" key={formKey}>
@@ -87,18 +89,22 @@ function App() {
 
               <div className="form-actions">
                 <Button onClick={handleSubmit} variant="primary" size="lg">
-                  🚀 Send
+                  Send
                 </Button>
                 <Button onClick={handleReset} variant="ghost" size="md">
-                  ↺ Reset
+                  Reset
                 </Button>
               </div>
             </div>
           ) : (
             <div className="form-empty">
-              <div className="form-empty-icon">📐</div>
+              <div className="form-empty-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5A2.25 2.25 0 004.25 18h11.5A2.25 2.25 0 0018 15.75V4.25A2.25 2.25 0 0015.75 2H4.25zm4.03 6.28a.75.75 0 00-1.06-1.06L4.97 9.47a.75.75 0 000 1.06l2.25 2.25a.75.75 0 001.06-1.06L6.56 10l1.72-1.72zm4.5-1.06a.75.75 0 10-1.06 1.06L13.44 10l-1.72 1.72a.75.75 0 101.06 1.06l2.25-2.25a.75.75 0 000-1.06l-2.25-2.25z" clipRule="evenodd" />
+                </svg>
+              </div>
               <p className="form-empty-text">
-                Load a schema from the left panel to generate a form.
+                Load a schema from the left panel to generate your form.
               </p>
             </div>
           )}

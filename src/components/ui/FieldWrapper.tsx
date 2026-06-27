@@ -16,10 +16,7 @@ export const FieldWrapper: React.FC<FieldWrapperProps> = ({
   children,
 }) => {
   return (
-    <div
-      className="field-wrapper"
-      style={{ animationDelay: `${depth * 30}ms` }}
-    >
+    <div className="field-wrapper">
       <label className="field-label">
         <span className="field-label-text">{label}</span>
         {required && <span className="field-required">*</span>}
